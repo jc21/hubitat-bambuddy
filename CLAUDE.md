@@ -23,9 +23,9 @@ Hubitat Groovy driver for monitoring and controlling Bambu Lab 3D printers via a
 | GET | `/api/v1/printers/` | Returns array of printer objects |
 | GET | `/api/v1/printers/{id}/status` | No trailing slash |
 | POST | `/api/v1/printers/{id}/clear-plate` | No body needed |
-| POST | `/api/v1/printers/{id}/stop` | No body needed |
-| POST | `/api/v1/printers/{id}/pause` | No body needed |
-| POST | `/api/v1/printers/{id}/resume` | No body needed |
+| POST | `/api/v1/printers/{id}/print/stop` | No body needed |
+| POST | `/api/v1/printers/{id}/print/pause` | No body needed |
+| POST | `/api/v1/printers/{id}/print/resume` | No body needed |
 | POST | `/api/v1/printers/{id}/chamber-light` | Body: `{"on": true/false}` |
 
 ### MQTT

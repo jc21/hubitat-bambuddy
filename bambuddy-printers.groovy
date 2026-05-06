@@ -162,9 +162,9 @@ def refreshData() {
 }
 
 def clearPlate(printerId)  { asyncPrinterPost(printerId, "clear-plate",   null) }
-def stopPrint(printerId)   { asyncPrinterPost(printerId, "stop",          null) }
-def pausePrint(printerId)  { asyncPrinterPost(printerId, "pause",         null) }
-def resumePrint(printerId) { asyncPrinterPost(printerId, "resume",        null) }
+def stopPrint(printerId)   { asyncPrinterPost(printerId, "print/stop",   null) }
+def pausePrint(printerId)  { asyncPrinterPost(printerId, "print/pause",  null) }
+def resumePrint(printerId) { asyncPrinterPost(printerId, "print/resume", null) }
 def lightOn(printerId)     { asyncPrinterPost(printerId, "chamber-light", [on: true])  }
 def lightOff(printerId)    { asyncPrinterPost(printerId, "chamber-light", [on: false]) }
 
@@ -387,8 +387,10 @@ private updatePrinterStates(printerId, Map d) {
 private asyncPrinterPost(printerId, String action, Map body) {
     if (!validateSettings()) return
     def params = buildParams("/api/v1/printers/${printerId}/${action}")
-    params.contentType = "application/json"
-    params.body        = groovy.json.JsonOutput.toJson(body ?: [:])
+    if (body != null) {
+        params.contentType = "application/json"
+        params.body        = groovy.json.JsonOutput.toJson(body)
+    }
     if (logEnable) log.debug "REQ POST ${params.uri} headers=${params.headers} body=${params.body}"
     asynchttpPost("printerActionCallback", params, [printerId: printerId, action: action])
 }
