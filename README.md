@@ -50,4 +50,3 @@ Capabilities
   * Control Printer
 4. Optionally add your MQTT server details (host:port, user/pass, topic prefix from BamBuddy settings)
 5. Turn on Debug Logging and check the logs, turn off when everything is working
-q
