@@ -383,7 +383,8 @@ private updatePrinterStates(printerId, Map d) {
 }
 
 private sendIfChanged(String name, String value) {
-    if (device.currentValue(name)?.toString() != value) {
+    if (state."_last_${name}" != value) {
+        state."_last_${name}" = value
         sendEvent(name: name, value: value)
     }
 }
