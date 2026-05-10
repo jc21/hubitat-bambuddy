@@ -372,14 +372,21 @@ def printerActionCallback(resp, data) {
 
 private updatePrinterStates(printerId, Map d) {
     def pfx = "printer${printerId}"
-    sendEvent(name: "${pfx}Name",          value: safeStr(d.name))
-    sendEvent(name: "${pfx}Connected",     value: safeStr(d.connected))
-    sendEvent(name: "${pfx}State",         value: safeStr(d.state))
-    sendEvent(name: "${pfx}CurrentPrint",  value: safeStr(d.current_print))
-    sendEvent(name: "${pfx}Progress",      value: safeStr(d.progress))
-    sendEvent(name: "${pfx}RemainingTime", value: safeStr(d.remaining_time))
+    sendIfChanged("${pfx}Name",          safeStr(d.name))
+    sendIfChanged("${pfx}Connected",     safeStr(d.connected))
+    sendIfChanged("${pfx}State",         safeStr(d.state))
+    sendIfChanged("${pfx}CurrentPrint",  safeStr(d.current_print))
+    sendIfChanged("${pfx}Progress",      safeStr(d.progress))
+    sendIfChanged("${pfx}RemainingTime", safeStr(d.remaining_time))
 
     if (logEnable) log.debug "Printer ${printerId}: state=${d.state}, progress=${d.progress}, remaining=${d.remaining_time}"
+}
+
+private sendIfChanged(String name, String value) {
+    if (state."_last_${name}" != value) {
+        state."_last_${name}" = value
+        sendEvent(name: name, value: value)
+    }
 }
 
 // ── HTTP Helpers ───────────────────────────────────────────────────────────
