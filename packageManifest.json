@@ -1,7 +1,7 @@
 {
   "packageName": "BamBuddy Printers Driver",
   "author": "Jamie Curnow",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "minimumHEVersion": "2.3.0",
   "licenseFile": "https://github.com/jc21/hubitat-bambuddy/blob/main/LICENSE",
   "documentationLink": "https://github.com/jc21/hubitat-bambuddy",
@@ -13,7 +13,7 @@
       "id": "202cd174-95ae-4ee1-ab83-96068c0ab15b",
       "name": "BamBuddy Printers",
       "namespace": "jc21",
-      "location": "https://raw.githubusercontent.com/jc21/hubitat-bambuddy/refs/tags/v0.0.2/bambuddy-printers.groovy",
+      "location": "https://raw.githubusercontent.com/jc21/hubitat-bambuddy/refs/tags/v0.0.3/bambuddy-printers.groovy",
       "required": true
     }
   ]
