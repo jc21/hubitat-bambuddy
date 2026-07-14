@@ -85,7 +85,13 @@ States:
 Capabilities
 - Refresh (delegates up to the printer device, then the BamBuddy hub device)
 
-## Installation
+## Hubitat Package Manager Installation
+
+1. Install [HPM](https://hubitatpackagemanager.hubitatcommunity.com/)
+2. Open the HPM App, Install a new package and search for BamBuddy. Select the one authored by jc21.
+3. Profit
+
+## Manual Installation
 
 1. In Hubitat → Drivers Code, click the "+ Add driver" button and paste contents of `bambuddy.groovy` and click Save
 2. Repeat for `bambuddy-printer.groovy` — this is the child driver used for each discovered printer
