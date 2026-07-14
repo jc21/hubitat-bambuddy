@@ -246,7 +246,7 @@ def parse(String description) {
 
     if (logEnable) log.debug "MQTT status for printer ${msg.printer_id} (${msg.printer_name}): state=${msg.state} progress=${msg.progress} remaining=${msg.remaining_time} connected=${msg.connected}"
 
-    updatePrinterStates(msg.printer_id, [
+    def update = [
         name:           msg.printer_name,
         connected:      msg.connected,
         state:          msg.state,
@@ -254,7 +254,20 @@ def parse(String description) {
         progress:       msg.progress,
         remaining_time: msg.remaining_time,
         light:          msg.chamber_light
-    ])
+    ]
+    // ams, vt_tray (the external/vase-mode spool) and the tray_now/
+    // active_extruder/ams_extruder_map fields used to work out which tray
+    // is actually loaded are only included when the MQTT payload actually
+    // carries them — see the hms_errors precedent below; omitting the key
+    // (rather than sending null) avoids clobbering child devices on every
+    // ~1s MQTT tick.
+    if (msg.containsKey("ams"))              update.ams              = msg.ams
+    if (msg.containsKey("vt_tray"))          update.vt_tray          = msg.vt_tray
+    if (msg.containsKey("tray_now"))         update.tray_now         = msg.tray_now
+    if (msg.containsKey("active_extruder"))  update.active_extruder  = msg.active_extruder
+    if (msg.containsKey("ams_extruder_map")) update.ams_extruder_map = msg.ams_extruder_map
+
+    updatePrinterStates(msg.printer_id, update)
 
     if (logEnable) log.debug "MQTT state update applied for printer ${msg.printer_id}"
 }
@@ -330,14 +343,19 @@ def printerStatusCallback(resp, data) {
     }
 
     updatePrinterStates(printerId, [
-        name:           d.name,
-        connected:      d.connected,
-        state:          d.state,
-        current_print:  d.current_print,
-        progress:       d.progress,
-        remaining_time: d.remaining_time,
-        light:          d.chamber_light,
-        hms_errors:     d.hms_errors
+        name:             d.name,
+        connected:        d.connected,
+        state:            d.state,
+        current_print:    d.current_print,
+        progress:         d.progress,
+        remaining_time:   d.remaining_time,
+        light:            d.chamber_light,
+        hms_errors:       d.hms_errors,
+        ams:              d.ams,
+        vt_tray:          d.vt_tray,
+        tray_now:         d.tray_now,
+        active_extruder:  d.active_extruder,
+        ams_extruder_map: d.ams_extruder_map
     ])
 }
 
