@@ -4,6 +4,10 @@
  * Monitors and controls Bambu Lab 3D printers via a BamBuddy instance.
  * Supports both REST polling and optional MQTT live updates.
  *
+ * A child device ("BamBuddy Printer") is created automatically for each
+ * printer discovered via the API. Per-printer commands, the smart-plug
+ * Switch capability, and chamber light control live on those child devices.
+ *
  * API Token Permissions Required:
  *   • Read Status
  *   • Manage Queue
@@ -11,22 +15,15 @@
  */
 metadata {
     definition(
-        name:        "BamBuddy Printers",
+        name:        "BamBuddy",
         namespace:   "jc21",
         author:      "Jamie Curnow",
         description: "Monitor and control Bambu Lab printers via BamBuddy https://bambuddy.cool"
     ) {
         capability "Refresh"
         capability "Initialize"
-        capability "Switch"
 
         command "refreshData"
-        command "clearPlate",    [[name: "Printer ID*", type: "NUMBER", description: "Printer ID to clear plate on"]]
-        command "stopPrint",     [[name: "Printer ID*", type: "NUMBER", description: "Printer ID to stop"]]
-        command "pausePrint",    [[name: "Printer ID*", type: "NUMBER", description: "Printer ID to pause"]]
-        command "resumePrint",   [[name: "Printer ID*", type: "NUMBER", description: "Printer ID to resume"]]
-        command "lightOn",       [[name: "Printer ID*", type: "NUMBER", description: "Printer ID to turn chamber light on"]]
-        command "lightOff",      [[name: "Printer ID*", type: "NUMBER", description: "Printer ID to turn chamber light off"]]
         command "connectMqtt"
         command "disconnectMqtt"
 
@@ -34,12 +31,10 @@ metadata {
         attribute "health",     "string"
         attribute "mqttStatus", "string"
 
-        // Per-printer states are set dynamically as camelCase, e.g.:
-        //   printer1Name, printer1Connected, printer1State,
-        //   printer1CurrentPrint, printer1Progress, printer1RemainingTime
-        //
         // State Variables (visible under "State Variables"):
         //   state.printers — List of [{id, name}, ...] from last REST poll
+        //
+        // Per-printer states live on the "BamBuddy Printer" child devices.
     }
 
     preferences {
@@ -161,26 +156,17 @@ def refreshData() {
     asynchttpGet("printersCallback", printersParams)
 }
 
-def clearPlate(printerId)  { asyncPrinterPost(printerId, "clear-plate",   null) }
-def stopPrint(printerId)   { asyncPrinterPost(printerId, "print/stop",   null) }
-def pausePrint(printerId)  { asyncPrinterPost(printerId, "print/pause",  null) }
-def resumePrint(printerId) { asyncPrinterPost(printerId, "print/resume", null) }
-def lightOn(printerId)     { asyncPrinterPost(printerId, "chamber-light", [on: true])  }
-def lightOff(printerId)    { asyncPrinterPost(printerId, "chamber-light", [on: false]) }
+// ── Called by child devices ─────────────────────────────────────────────────
 
-def on() {
-    allPrinterIds().each { id -> lightOn(id) }
-    sendEvent(name: "switch", value: "on")
-}
-
-def off() {
-    allPrinterIds().each { id -> lightOff(id) }
-    sendEvent(name: "switch", value: "off")
-}
-
-private List allPrinterIds() {
-    return (state.printers ?: []).collect { it.id }
-}
+def childRefresh(printerId)     { requestPrinterStatus(printerId) }
+def childClearPlate(printerId)  { asyncPrinterPost(printerId, "clear-plate",   null) }
+def childStopPrint(printerId)   { asyncPrinterPost(printerId, "print/stop",   null) }
+def childPausePrint(printerId)  { asyncPrinterPost(printerId, "print/pause",  null) }
+def childResumePrint(printerId) { asyncPrinterPost(printerId, "print/resume", null) }
+def childPlugOn(printerId)      { requestSmartPlugControl(printerId, "on")  }
+def childPlugOff(printerId)     { requestSmartPlugControl(printerId, "off") }
+def childLightOn(printerId)     { asyncChamberLight(printerId, true)  }
+def childLightOff(printerId)    { asyncChamberLight(printerId, false) }
 
 // ── MQTT ───────────────────────────────────────────────────────────────────
 
@@ -266,7 +252,8 @@ def parse(String description) {
         state:          msg.state,
         current_print:  msg.current_print,
         progress:       msg.progress,
-        remaining_time: msg.remaining_time
+        remaining_time: msg.remaining_time,
+        light:          msg.chamber_light
     ])
 
     if (logEnable) log.debug "MQTT state update applied for printer ${msg.printer_id}"
@@ -313,9 +300,8 @@ def printersCallback(resp, data) {
     if (logEnable) log.debug "Printers: ${list.collect { "${it.id}:${it.name}" }.join(", ")}"
 
     list.each { p ->
-        def sp = buildParams("/api/v1/printers/${p.id}/status")
-        if (logEnable) log.debug "REQ GET ${sp.uri} headers=${sp.headers}"
-        asynchttpGet("printerStatusCallback", sp, [printerId: p.id])
+        ensureChildDevice(p)
+        requestPrinterStatus(p.id)
     }
 }
 
@@ -349,7 +335,9 @@ def printerStatusCallback(resp, data) {
         state:          d.state,
         current_print:  d.current_print,
         progress:       d.progress,
-        remaining_time: d.remaining_time
+        remaining_time: d.remaining_time,
+        light:          d.chamber_light,
+        hms_errors:     d.hms_errors
     ])
 }
 
@@ -368,28 +356,122 @@ def printerActionCallback(resp, data) {
     }
 }
 
+def smartPlugByPrinterCallback(resp, data) {
+    def printerId = data?.printerId
+    def action    = data?.action
+    if (resp.hasError()) {
+        log.error "${device.displayName}: smart-plug lookup failed for printer ${printerId} — HTTP ${resp.getStatus()} ${resp.getErrorMessage()}"
+        return
+    }
+    def rawBody = resp.data
+    if (logEnable) log.debug "RESP GET /api/v1/smart-plugs/by-printer/${printerId} -> [${resp.getStatus()}] body='${rawBody}'"
+    if (resp.getStatus() != 200) {
+        log.warn "${device.displayName}: smart-plug lookup for printer ${printerId} returned HTTP ${resp.getStatus()}"
+        return
+    }
+    def plug
+    try {
+        plug = parseJson(rawBody)
+    } catch (Exception e) {
+        log.error "${device.displayName}: failed to parse smart-plug lookup for printer ${printerId} — ${e.message}"
+        return
+    }
+    def plugId = plug?.id
+    storePlugStatus(printerId, plug?.last_state)
+    if (plugId == null) {
+        log.warn "${device.displayName}: no smart plug found for printer ${printerId}"
+        return
+    }
+    asyncSmartPlugControl(plugId, action, printerId)
+}
+
+def smartPlugControlCallback(resp, data) {
+    def plugId    = data?.plugId
+    def action    = data?.action
+    def printerId = data?.printerId
+    if (resp.hasError()) {
+        log.error "${device.displayName}: smart-plug '${action}' failed for plug ${plugId} (printer ${printerId}) — HTTP ${resp.getStatus()} ${resp.getErrorMessage()}"
+        return
+    }
+    if (logEnable) log.debug "RESP POST /api/v1/smart-plugs/${plugId}/control -> [${resp.getStatus()}] ${resp.data}"
+    if (resp.getStatus() in [200, 201, 204]) {
+        log.info "${device.displayName}: smart-plug '${action}' sent for printer ${printerId} (plug ${plugId})"
+        storePlugStatus(printerId, action)
+    } else {
+        log.warn "${device.displayName}: smart-plug '${action}' for plug ${plugId} returned HTTP ${resp.getStatus()}"
+    }
+}
+
+// ── State: Smart Plug Status ────────────────────────────────────────────────
+//
+// state.plugStatus — Map of printerId -> last known smart-plug status
+// ("ON"/"OFF"), populated from smart-plugs/by-printer lookups and control
+// responses. Mirrored onto the printer child device's "switch" attribute.
+
+private storePlugStatus(printerId, rawState) {
+    if (rawState == null) return
+    def normalized = rawState.toString().equalsIgnoreCase("on") ? "ON" : "OFF"
+    state.plugStatus = (state.plugStatus ?: [:])
+    state.plugStatus["${printerId}"] = normalized
+    getPrinterChildDevice(printerId)?.updatePlugState(normalized)
+}
+
+// ── Child Device Management ─────────────────────────────────────────────────
+
+private ensureChildDevice(Map p) {
+    def dni   = childDni(p.id)
+    def child = getChildDevice(dni)
+    if (!child) {
+        try {
+            child = addChildDevice("jc21", "BamBuddy Printer", dni, [
+                name:  "BamBuddy Printer",
+                label: p.name ?: "Printer ${p.id}",
+                data:  [printerId: "${p.id}"]
+            ])
+            log.info "${device.displayName}: created child device for printer ${p.id} (${p.name})"
+        } catch (e) {
+            log.error "${device.displayName}: failed to create child device for printer ${p.id} — ${e.message}"
+        }
+    }
+    // Backfill/repair the printerId data value for children created by an
+    // older driver version (or otherwise missing it) — addChildDevice only
+    // sets it at creation time, so pre-existing children never get it.
+    if (child && child.getDataValue("printerId") != "${p.id}") {
+        child.updateDataValue("printerId", "${p.id}")
+        log.info "${device.displayName}: backfilled printerId=${p.id} on child device for ${p.name}"
+    }
+    return child
+}
+
+private getPrinterChildDevice(printerId) {
+    return getChildDevice(childDni(printerId))
+}
+
+private String childDni(printerId) {
+    return "${device.deviceNetworkId}-printer${printerId}"
+}
+
 // ── Shared State Update ────────────────────────────────────────────────────
 
 private updatePrinterStates(printerId, Map d) {
-    def pfx = "printer${printerId}"
-    sendIfChanged("${pfx}Name",          safeStr(d.name))
-    sendIfChanged("${pfx}Connected",     safeStr(d.connected))
-    sendIfChanged("${pfx}State",         safeStr(d.state))
-    sendIfChanged("${pfx}CurrentPrint",  safeStr(d.current_print))
-    sendIfChanged("${pfx}Progress",      safeStr(d.progress))
-    sendIfChanged("${pfx}RemainingTime", safeStr(d.remaining_time))
+    def child = getPrinterChildDevice(printerId)
+    if (!child) {
+        if (logEnable) log.debug "No child device for printer ${printerId}, skipping state update"
+        return
+    }
+    child.updateFromParent(d)
 
     if (logEnable) log.debug "Printer ${printerId}: state=${d.state}, progress=${d.progress}, remaining=${d.remaining_time}"
 }
 
-private sendIfChanged(String name, String value) {
-    if (state."_last_${name}" != value) {
-        state."_last_${name}" = value
-        sendEvent(name: name, value: value)
-    }
-}
-
 // ── HTTP Helpers ───────────────────────────────────────────────────────────
+
+private requestPrinterStatus(printerId) {
+    if (!validateSettings()) return
+    def sp = buildParams("/api/v1/printers/${printerId}/status")
+    if (logEnable) log.debug "REQ GET ${sp.uri} headers=${sp.headers}"
+    asynchttpGet("printerStatusCallback", sp, [printerId: printerId])
+}
 
 private asyncPrinterPost(printerId, String action, Map body) {
     if (!validateSettings()) return
@@ -400,6 +482,30 @@ private asyncPrinterPost(printerId, String action, Map body) {
     }
     if (logEnable) log.debug "REQ POST ${params.uri} headers=${params.headers} body=${params.body}"
     asynchttpPost("printerActionCallback", params, [printerId: printerId, action: action])
+}
+
+private requestSmartPlugControl(printerId, String action) {
+    if (!validateSettings()) return
+    def params = buildParams("/api/v1/smart-plugs/by-printer/${printerId}")
+    if (logEnable) log.debug "REQ GET ${params.uri} headers=${params.headers}"
+    asynchttpGet("smartPlugByPrinterCallback", params, [printerId: printerId, action: action])
+}
+
+private asyncSmartPlugControl(plugId, String action, printerId) {
+    if (!validateSettings()) return
+    def params = buildParams("/api/v1/smart-plugs/${plugId}/control")
+    params.contentType = "application/json"
+    params.body        = groovy.json.JsonOutput.toJson([action: action])
+    if (logEnable) log.debug "REQ POST ${params.uri} headers=${params.headers} body=${params.body}"
+    asynchttpPost("smartPlugControlCallback", params, [plugId: plugId, action: action, printerId: printerId])
+}
+
+private asyncChamberLight(printerId, boolean on) {
+    if (!validateSettings()) return
+    def value  = on ? "True" : "False"
+    def params = buildParams("/api/v1/printers/${printerId}/chamber-light?on=${value}")
+    if (logEnable) log.debug "REQ POST ${params.uri} headers=${params.headers}"
+    asynchttpPost("printerActionCallback", params, [printerId: printerId, action: "chamber-light(${value})"])
 }
 
 private Map buildParams(String path) {
@@ -423,5 +529,3 @@ private boolean validateSettings() {
     if (!settings.apiKey)       { log.warn "${device.displayName}: API token not configured"; return false }
     return true
 }
-
-private String safeStr(val) { val != null ? val.toString() : "" }

@@ -15,38 +15,55 @@ native with your Bambu printer, check out
 
 - Connects to your BamBuddy instance via REST API
 - Optionally connects to a MQTT broker if you've got one setup
+- Automatically creates a child device for each printer discovered via the API
 
-### Device
+### Parent Device (BamBuddy Printers)
 
 Commands:
-- Clear Plate
-- Light on/off
-- Pause/Resume/Stop print
+- Refresh Data
+- Connect/Disconnect MQTT
 
 States:
 - health
 - mqttStatus
 
-State for each printer:
-- printer1Connected
-- printer1CurrentPrint
-- printer1Name
-- printer1Progress
-- printer1RemainingTime
-- printer1State
-
 Capabilities
 - Initialize
+- Refresh
+
+### Child Device (BamBuddy Printer)
+
+One is created automatically per printer discovered via the API.
+
+Commands:
+- Clear Plate
+- Pause/Resume/Stop print
+- On/Off (Connected smart plug for printer)
+- Light On/Off (chamber light)
+
+States:
+- printerName
+- connected
+- state
+- currentPrint
+- progress
+- remainingTime
+- light
+- hmsError
+
+Capabilities
 - Refresh
 - Switch
 
 ## Installation
 
-1. In Hubitat → Drivers Code, click the "+ Add driver" button and paste contents of `bambuddy-printers.groovy` and click Save
-2. In the Devices section, create a new Virtual Device, choose driver `BamBuddy Printers`
-3. After creation, in your new device's preferences, set the host of the BamBuddy instance, an API Token with these permissions:
+1. In Hubitat → Drivers Code, click the "+ Add driver" button and paste contents of `bambuddy.groovy` and click Save
+2. Repeat for `bambuddy-printer.groovy` — this is the child driver used for each discovered printer
+3. In the Devices section, create a new Virtual Device, choose driver `BamBuddy Printers`
+4. After creation, in your new device's preferences, set the host of the BamBuddy instance, an API Token with these permissions:
   * Read Status
   * Manage Queue
   * Control Printer
-4. Optionally add your MQTT server details (host:port, user/pass, topic prefix from BamBuddy settings)
-5. Turn on Debug Logging and check the logs, turn off when everything is working
+5. Optionally add your MQTT server details (host:port, user/pass, topic prefix from BamBuddy settings)
+6. Turn on Debug Logging and check the logs, turn off when everything is working
+7. A child device will be created automatically for each printer BamBuddy reports — use these for per-printer commands and states
