@@ -14,6 +14,7 @@
       "name": "BamBuddy",
       "namespace": "jc21",
       "location": "https://raw.githubusercontent.com/jc21/hubitat-bambuddy/refs/tags/v0.1.1/bambuddy.groovy",
+      "version": "0.1.1",
       "required": true
     },
     {
@@ -21,6 +22,7 @@
       "name": "BamBuddy Printer",
       "namespace": "jc21",
       "location": "https://raw.githubusercontent.com/jc21/hubitat-bambuddy/refs/tags/v0.1.1/bambuddy-printer.groovy",
+      "version": "0.1.1",
       "required": true
     },
     {
@@ -28,6 +30,7 @@
       "name": "BamBuddy AMS",
       "namespace": "jc21",
       "location": "https://raw.githubusercontent.com/jc21/hubitat-bambuddy/refs/tags/v0.1.1/bambuddy-ams.groovy",
+      "version": "0.1.1",
       "required": false
     }
   ]
