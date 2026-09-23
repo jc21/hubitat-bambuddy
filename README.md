@@ -1,7 +1,7 @@
-# Hubitat Driver for [BamBuddy](https://bambuddy.cool)
+# Hubitat Driver for [BamBuddy](https://bambuddy.cool) and [PrintBuddy](https://wiki.printbuddy.tech/)
 
 A custom Hubitat Elevation driver for monitoring and controlling your
-Bambu 3D printers through BamBuddy directly from your home automation platform.
+Bambu 3D printers through BamBuddy or PrintBuddy directly from your home automation platform.
 
 My main use case for this is to have a physical button on my printer that
 fires the Clear Plate command in BamBuddy. However it's the basis to do
